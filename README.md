@@ -1,368 +1,595 @@
-function go(){
-  const fn = SCENES[S.loc];
-  if(!fn) return goto('hall');
-  const d = fn();
-  render(d.title, d.paras, d.actions);
-}
-
-const SCENES = {
-  hall(){
-    const acts = [];
-    acts.push({t:'和阿柚说话', f:talkAyou});
-    acts.push({t:'看桌上的共鸣器', f:resonator});
-    acts.push({t:'看墙上的旧告示', f:notice});
-    if(!S.flags.dorm_done && S.night >= 1) acts.push({t:'回宿舍夜谈', f:dormTalk, c:'special'});
-    if(S.flags.dorm_done && !S.flags.bell_done) acts.push({t:'看看阿柚的流星铃', f:starBell, c:'special'});
-    if(!S.flags.crush_done && S.flags.dorm_done) acts.push({t:'查看匿名纸条', f:anonNote, c:'special'});
-    acts.push({t:'去潮音教室', f:()=>goto('classroom')});
-    if(S.flags.classroom_done) acts.push({t:'去雾廊', f:()=>goto('fog')});
-    if(S.flags.fog_night_done) acts.push({t:'去回声桥', f:()=>goto('bridge')});
-    if(S.flags.fog_night_done) acts.push({t:'去旧物图书馆', f:()=>goto('library')});
-    acts.push({t:'打开线索簿（Tab）', f:toggleBook, c:'gray'});
-    return {
-      title:'回声礼堂',
-      paras:['穹顶很高，雾从窗缝里渗进来。远处有个女生朝你挥手。',
-        '<span class="dim">阿柚站在桌边，桌上摆着几只共鸣器。墙上贴着一张发黄的告示。走廊尽头是潮音教室的方向。</span>'],
-      actions:acts
-    };
-  },
-  classroom(){
-    if(!S.flags.class_started){ flag('class_started'); S.night = Math.max(S.night,1); updatePhase(); }
-    const acts = [];
-    if(!S.flags.classroom_done) acts.push({t:'靠近墙听', f:puzzleClass});
-    if(!S.flags.libo_talked) acts.push({t:'课后问黎伯', f:liboTalk});
-    acts.push({t:'找闻玦说话', f:wenjue});
-    if(S.flags.libo_talked && !S.flags.libo_resolved) acts.push({t:'帮黎伯整理旧物', f:liboHelp, c:'special'});
-    acts.push({t:'回礼堂', f:()=>goto('hall')});
-    return {title:'潮音教室',
-      paras:['黎伯在石板上写字，笔停了很久。墙里好像有极轻的歌声。',
-        '<span class="dim">闻玦坐在角落，反复核对一本旧目录。</span>'],
-      actions:acts};
-  },
-  library(){
-    const acts = [];
-    if(!S.flags.catalog_done) acts.push({t:'翻查图书馆目录', f:catalogCheck});
-    if(!S.flags.lib_crush) acts.push({t:'在角落找座位', f:libraryCorner, c:'special'});
-    acts.push({t:'回礼堂', f:()=>goto('hall')});
-    return {title:'旧物图书馆',
-      paras:['书架高到看不见顶。旧物在架子上轻轻回响，像在低声说话。',
-        '<span class="dim">这里很安静，适合查一些不想被别人知道的事。</span>'],
-      actions:acts};
-  },
-  fog(){
-    if(S.flags.finale_done) return {title:'雾廊',paras:['雾廊已经安静了。故事结束了。'],actions:[{t:'重新开始',f:()=>location.reload()}]};
-    const acts = [];
-    if(!S.flags.fog_night_done){
-      if(S.night < 2) acts.push({t:'（天还没黑）等到夜晚', f:()=>{S.night=2;updatePhase();go();}});
-      else acts.push({t:'循声而去', f:fogNight});
-    } else {
-      if(S.flags.heard_fog_song && !S.flags.notice_done) acts.push({t:'查看雾廊尽头的半张告示', f:tornNotice, c:'special'});
-      if(!S.flags.rumor_done) acts.push({t:'听墙角的八卦', f:fogRumor, c:'special'});
-      if(!S.flags.sneak_done) acts.push({t:'用静默术潜行', f:sneak, c:'special'});
-      acts.push({t:'走到静默井入口（终章）', f:finale, c:'warn'});
-    }
-    acts.push({t:'回礼堂', f:()=>goto('hall')});
-    return {title:'雾廊',
-      paras:['灯一盏盏灭了。墙里的歌声越来越近，像有人在很远的地方哼一首没写完的曲子。',
-        '<span class="dim">雾廊很长，尽头通向静默井。两侧的墙上有旧痕。</span>'],
-      actions:acts};
-  },
-  bridge(){
-    const acts = [];
-    if(!S.flags.tide_done) acts.push({t:'在桥边坐下看雾海', f:tideView, c:'special'});
-    if(!S.flags.race_done) acts.push({t:'和朋友赛跑', f:race, c:'special'});
-    if(!S.flags.bonfire_done) acts.push({t:'参加雾海篝火夜', f:bonfire, c:'special'});
-    if(S.night === 1 || S.flags.tide_low) acts.push({t:'去外岛市集', f:()=>goto('island')});
-    acts.push({t:'回礼堂', f:()=>goto('hall')});
-    return {title:'回声桥',
-      paras:['雾海退下去，桥边的风带着咸味。远处有一座小岛的轮廓。',
-        '<span class="dim">桥很窄，两侧是雾。有人喜欢坐在这里吹风。</span>'],
-      actions:acts};
-  },
-  island(){
-    const acts = [];
-    if(!S.flags.market_done) acts.push({t:'走向市集门', f:market, c:'special'});
-    else acts.push({t:'看看市集', f:()=>render('外岛',['市集门半开着，商人正在打盹。'],[{t:'回桥',f:()=>goto('bridge')}])});
-    acts.push({t:'回桥', f:()=>goto('bridge')});
-    return {title:'外岛',
-      paras:['退潮露出的浅滩上，一扇旧门立在雾里。门楣上挂着褪色的布幡。',
-        '<span class="dim">门只在退潮时开。里面的人用记忆和承诺做买卖。</span>'],
-      actions:acts};
-  },
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>回声澜界</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#070a10;color:#d8e2f0;font-family:-apple-system,"PingFang SC",sans-serif;height:100vh;height:100dvh;overflow:hidden;display:flex;align-items:center;justify-content:center}
+#app{width:100%;max-width:720px;height:100vh;height:100dvh;background:#0d131e;display:flex;flex-direction:column;position:relative;overflow:hidden}
+#hud{padding:10px 14px;border-bottom:1px solid #1a2230;font-size:12px;color:#5a6a80;display:flex;gap:12px;flex-wrap:wrap;flex-shrink:0}
+#hud b{color:#8ab0d0;font-weight:normal}
+#main{flex:1;padding:18px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#btns{padding:10px 14px 18px;display:flex;flex-direction:column;gap:6px;flex-shrink:0;max-height:52vh;overflow-y:auto}
+button{text-align:left;background:#141c29;color:#c8d4e4;border:1px solid #2a3648;padding:11px 14px;border-radius:8px;font-size:13.5px;cursor:pointer;font-family:inherit;line-height:1.5}
+button:active{background:#1c2738}
+button.primary{background:#1a2a40;border-color:#3e5470;color:#e0e8f0}
+button.danger{color:#d0a080;border-color:#3a2a20}
+button.gray{color:#6d7a8c;font-size:12px;text-align:center}
+button:disabled{opacity:.35;cursor:default}
+h2{font-size:17px;color:#7fb0d8;margin-bottom:10px}
+p{font-size:14px;line-height:1.85;color:#c8d4e4;margin-bottom:9px}
+.dim{color:#7a8798;font-size:12.5px}
+.npc{color:#f0a0c0}
+.me{color:#a0d0f0}
+.echo{color:#a0c8a0;font-style:italic}
+.changes{margin:14px 0;padding:10px 14px;background:#0a0f17;border-radius:8px;border:1px solid #1a2230}
+.change{font-size:13px;padding:3px 0;display:flex;justify-content:space-between}
+.change .up{color:#6ac080}
+.change .down{color:#d08080}
+.change .info{color:#8ab0d0}
+.daytitle{font-size:12px;color:#5a6a80;margin-bottom:14px;letter-spacing:1px}
+.warnbox{padding:10px 14px;background:#1a1210;border:1px solid #3a2a20;border-radius:8px;font-size:12.5px;color:#d0a080;margin-bottom:12px;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span>第 <b id="day">1</b> 天</span>
+    <span>行动点 <b id="ap">2</b>/2</span>
+    <span>线索 <b id="clue">0</b></span>
+    <span>静默 <b id="sil">0</b></span>
+    <span>议会 <b id="council">0</b></span>
+  </div>
+  <div id="main"></div>
+  <div id="btns"></div>
+</div>
+<script>
+const S = {
+  day: 1, ap: 2,
+  clues: [], silence: 0, council: 0,
+  rel: { ayou: 0, qiyie: 0, wenjue: 0, libo: 0 },
+  flags: {}, acted: {}, missed: [],
 };
 
-function talkAyou(){
-  if(S.flags.ayou_done){
-    if(S.flags.heard_fog_song){
-      render('阿柚',['<span class="npc">阿柚</span>压低声音：“你昨晚去雾廊了？我就说那歌声不对劲。”'],[
-        {t:'我听见了第七段回声', f:()=>{flag('told_ayou');rel('ayou','trust',1);clue('qiyie_hint');render('阿柚',['阿柚愣了一下，把零食推给你：“……那你小心点。”'],[{t:'回到礼堂',f:()=>goto('hall')}]);}},
-        {t:'没什么，只是风声', f:()=>{rel('ayou','doubt',1);render('阿柚',['阿柚看了你一眼，没再问。'],[{t:'回到礼堂',f:()=>goto('hall')}]);}}
-      ]);
-    }else{
-      render('阿柚',['<span class="npc">阿柚</span>：“礼堂的旧告示你看了吗？二十年前的日期，怪吓人的。”'],[{t:'回到礼堂',f:()=>goto('hall')}]);
-    }
+const $ = id => document.getElementById(id);
+const main = $('main'), btns = $('btns');
+
+function updateHUD() {
+  $('day').textContent = S.day;
+  $('ap').textContent = S.ap;
+  $('clue').textContent = S.clues.length;
+  $('sil').textContent = S.silence;
+  $('council').textContent = S.council;
+}
+function addClue(id) { if (!S.clues.includes(id)) S.clues.push(id); }
+function rel(w, n) { S.rel[w] = Math.max(-5, Math.min(5, S.rel[w] + n)); }
+function sil(n) {
+  S.silence = Math.max(0, S.silence + n);
+  if (S.silence >= 10 && !S.flags.memory_lost) {
+    S.flags.memory_lost = true;
+    S.missed.push('你的记忆出现了一小块空白。');
+  }
+}
+function council(n) { S.council = Math.max(0, Math.min(5, S.council + n)); }
+
+function showFeedback(title, text, changes, btnText, onContinue) {
+  main.innerHTML = `<h2>${title}</h2>` +
+    text.map(p => `<p>${p}</p>`).join('') +
+    (changes.length ? `<div class="changes">${changes.map(c =>
+      `<div class="change"><span>${c.t}</span><span class="${c.type}">${c.v}</span></div>`
+    ).join('')}</div>` : '');
+  btns.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'primary';
+  b.textContent = btnText || '继续';
+  b.onclick = onContinue;
+  btns.appendChild(b);
+}
+
+const ACTIONS = {
+  ayou: {
+    label: '找阿柚',
+    desc: '她在礼堂，铃铛又在手里转。',
+    run() {
+      const n = (S.acted.ayou || 0) + 1;
+      S.acted.ayou = n;
+      if (n === 1) {
+        addClue('ayou_song'); rel('ayou', 1);
+        return {
+          title: '礼堂 · 阿柚',
+          text: ['<span class="npc">阿柚</span>：“你就是新来的？雾廊晚上有歌声，千万别去。”',
+            '<span class="dim">她说话时把铃铛转得很快，像在掩饰什么。</span>'],
+          changes: [
+            { t: '阿柚信任', v: '+1', type: 'up' },
+            { t: '获得线索：雾廊歌声', v: '', type: 'info' },
+          ],
+        };
+      }
+      if (n === 2) {
+        addClue('bell_hint'); rel('ayou', 1);
+        return {
+          title: '礼堂 · 阿柚',
+          text: ['阿柚把铃铛递过来：“它最近总响。你听听看，是不是坏了？”',
+            '<span class="dim">铃身有一道旧裂纹，里面像压着不属于市集的声音。</span>'],
+          changes: [
+            { t: '阿柚信任', v: '+1', type: 'up' },
+            { t: '开启支线：流星铃', v: '', type: 'info' },
+          ],
+        };
+      }
+      if (n === 3) {
+        rel('ayou', 1);
+        return {
+          title: '礼堂 · 阿柚',
+          text: ['阿柚：“你最近总来。是不是……也听见那歌声了？”',
+            '<span class="dim">她第一次没有用玩笑的语气。</span>'],
+          changes: [{ t: '阿柚信任', v: '+1', type: 'up' }],
+        };
+      }
+      rel('ayou', 1);
+      return {
+        title: '礼堂 · 阿柚',
+        text: ['阿柚把零食推过来：“吃点东西。你脸色不太好。”'],
+        changes: [{ t: '阿柚信任', v: '+1', type: 'up' }],
+      };
+    },
+  },
+
+  classroom: {
+    label: '去潮音教室',
+    desc: '黎伯在写字，闻玦在核对目录。',
+    run() {
+      const n = (S.acted.classroom || 0) + 1;
+      S.acted.classroom = n;
+      if (n === 1) {
+        addClue('classroom_song'); rel('libo', 1);
+        return {
+          title: '潮音教室',
+          text: ['黎伯在石板上写：“代价律——改变回响，必须付出等量代价。”',
+            '<span class="dim">写到最后，笔停了很久。墙里好像有极轻的歌声。</span>'],
+          changes: [
+            { t: '黎伯信任', v: '+1', type: 'up' },
+            { t: '获得线索：课堂异响', v: '', type: 'info' },
+          ],
+        };
+      }
+      if (n === 2) {
+        addClue('catalog'); rel('wenjue', 1);
+        return {
+          title: '潮音教室 · 闻玦',
+          text: ['闻玦把目录推过来：“缺页记录被改过。改得很小心，但还是留下了痕。”',
+            '<span class="dim">他顿了顿：“我哥也查过这个。”</span>'],
+          changes: [
+            { t: '闻玦信任', v: '+1', type: 'up' },
+            { t: '获得线索：目录篡改', v: '', type: 'info' },
+          ],
+        };
+      }
+      rel('wenjue', 1);
+      return {
+        title: '潮音教室',
+        text: ['闻玦把一叠整理好的笔记放在你桌上：“顺手。”',
+          '<span class="dim">笔记是新的，还有墨迹。他大概是刚抄完。</span>'],
+        changes: [{ t: '闻玦信任', v: '+1', type: 'up' }],
+      };
+    },
+  },
+
+  library: {
+    label: '去旧物图书馆',
+    desc: '安静，适合查不想被别人知道的事。',
+    run() {
+      const n = (S.acted.library || 0) + 1;
+      S.acted.library = n;
+      if (n === 1) {
+        addClue('catalog'); sil(1);
+        return {
+          title: '旧物图书馆',
+          text: ['你翻开目录，缺页记录被改过。旁边有一行铅笔小字：“问闻玦。”',
+            '<span class="dim">旧物在架子上低声回响，像是在提醒你什么。</span>'],
+          changes: [
+            { t: '获得线索：目录篡改', v: '', type: 'info' },
+            { t: '静默值', v: '+1', type: 'down' },
+          ],
+        };
+      }
+      if (n === 2) {
+        rel('wenjue', 1); addClue('wenjue_echo');
+        return {
+          title: '旧物图书馆 · 闻玦',
+          text: ['闻玦在角落找到你：“我哥留下半段回声。里面只有一句话——不是被盗，是被藏。”',
+            '<span class="dim">他把一张旧纸推到你面前，没有收回手。</span>'],
+          changes: [
+            { t: '闻玦信任', v: '+1', type: 'up' },
+            { t: '获得线索：半段回声', v: '', type: 'info' },
+          ],
+        };
+      }
+      sil(1);
+      return {
+        title: '旧物图书馆',
+        text: ['你在角落坐了整晚。旧物在你耳边轻轻回响，你听不清它们在说什么。'],
+        changes: [{ t: '静默值', v: '+1', type: 'down' }],
+      };
+    },
+  },
+
+  fog: {
+    label: '去雾廊',
+    desc: '危险。白天也像夜里。',
+    danger: true,
+    available() {
+      return (S.acted.classroom || 0) >= 1 || S.day >= 2;
+    },
+    run() {
+      const n = (S.acted.fog || 0) + 1;
+      S.acted.fog = n;
+      if (n === 1 && !S.flags.fog_night_done) {
+        S.flags.fog_night_done = true;
+        addClue('fog_song'); addClue('qiyie_hint'); rel('qiyie', 1);
+        return {
+          title: '雾廊 · 夜遇',
+          text: ['雾里走出一个人。是栖夜。',
+            '<span class="npc">栖夜</span>：“第七段回声不是被盗，是被藏。藏它的人，不想让议会拿到。”',
+            '<span class="me">你</span>：（他看着我，像在等我做一个决定。）'],
+          changes: [
+            { t: '栖夜信任', v: '+1', type: 'up' },
+            { t: '获得线索：第七回声', v: '', type: 'info' },
+          ],
+        };
+      }
+      if (n === 2 && !S.flags.notice_full) {
+        S.flags.notice_full = true; addClue('notice_full'); council(1);
+        return {
+          title: '雾廊 · 旧告示',
+          text: ['半张告示贴在雾廊尽头。留影术下，缺失的字慢慢显出来。',
+            '<span class="me">你</span>：（日期是二十年前。潮汐夜，禁入静默井。）'],
+          changes: [
+            { t: '获得线索：旧告示完整', v: '', type: 'info' },
+            { t: '议会介入', v: '+1', type: 'down' },
+          ],
+        };
+      }
+      sil(2); rel('qiyie', -1);
+      return {
+        title: '雾廊',
+        text: ['你在雾廊里走了很久，什么也没找到。静默值又高了一点。'],
+        changes: [
+          { t: '静默值', v: '+2', type: 'down' },
+          { t: '栖夜怀疑', v: '-1', type: 'down' },
+        ],
+      };
+    },
+  },
+
+  bridge: {
+    label: '去回声桥',
+    desc: '风很大，适合坐一会儿。',
+    run() {
+      const n = (S.acted.bridge || 0) + 1;
+      S.acted.bridge = n;
+      if (n === 1) {
+        rel('qiyie', 1); addClue('qiyie_soft');
+        return {
+          title: '回声桥 · 观潮',
+          text: ['雾海退下去，桥边的风带着咸味。栖夜在你旁边坐下。',
+            '栖夜：“我没有家。学园收留我的时候，黎伯说，守井人不需要家。”',
+            '<span class="dim">他顿了顿：“但有时候，我会觉得桥边比井边暖和。”</span>'],
+          changes: [
+            { t: '栖夜信任', v: '+1', type: 'up' },
+            { t: '获得线索：栖夜的软处', v: '', type: 'info' },
+          ],
+        };
+      }
+      rel('ayou', 1);
+      return {
+        title: '回声桥',
+        text: ['阿柚拉着你赛跑。桥很窄，风很大，她跑得比看起来快。',
+          '<span class="dim">跑到一半她突然停下，说：“要是毕业了还能这样跑就好了。”</span>'],
+        changes: [{ t: '阿柚信任', v: '+1', type: 'up' }],
+      };
+    },
+  },
+
+  market: {
+    label: '去外岛市集',
+    desc: '退潮才开门。用记忆和承诺做买卖。',
+    available() { return S.day >= 3; },
+    run() {
+      if (S.flags.market_done) {
+        return {
+          title: '外岛市集',
+          text: ['市集门半开着。商人看了你一眼，没有招呼。'],
+          changes: [],
+        };
+      }
+      S.flags.market_done = true;
+      return {
+        title: '外岛市集 · 交易',
+        text: ['<span class="npc">市集商人</span>：“退潮才开门。你带了什么来换？”',
+          '<span class="dim">他面前摆着旧回声、旧名字、旧承诺。</span>'],
+        changes: [],
+        isChoice: true,
+      };
+    },
+  },
+};
+function renderHub() {
+  updateHUD();
+  const acts = Object.keys(ACTIONS).filter(k => {
+    const a = ACTIONS[k];
+    if (a.available && !a.available()) return false;
+    if (k === 'market' && S.flags.market_done) return false;
+    return true;
+  });
+
+  main.innerHTML = `<div class="daytitle">第 ${S.day} 天 · 行动点 ${S.ap}/2</div>` +
+    `<h2>今天做什么？</h2>` +
+    `<p class="dim">每天只有两个行动点。没做的事，世界不会等你。</p>` +
+    `<div class="changes">` +
+    Object.keys(S.rel).map(k => {
+      const v = S.rel[k];
+      const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'info';
+      return `<div class="change"><span>${k}</span><span class="${cls}">${v > 0 ? '+' : ''}${v}</span></div>`;
+    }).join('') +
+    `</div>`;
+
+  btns.innerHTML = '';
+  acts.forEach(k => {
+    const a = ACTIONS[k];
+    const b = document.createElement('button');
+    b.innerHTML = `<b>${a.label}</b><br><span class="dim">${a.desc}</span>`;
+    if (a.danger) b.className = 'danger';
+    b.onclick = () => doAction(k);
+    btns.appendChild(b);
+  });
+  const book = document.createElement('button');
+  book.className = 'gray';
+  book.textContent = '查看线索簿';
+  book.onclick = showBook;
+  btns.appendChild(book);
+}
+
+function doAction(key) {
+  if (S.ap <= 0) return;
+  S.ap--;
+  updateHUD();
+  const a = ACTIONS[key];
+  if (key === 'market' && !S.flags.market_done) {
+    S.flags.market_done = true;
+    showMarketChoice();
     return;
   }
-  render('阿柚',['<span class="npc">阿柚</span>：“你就是新来的？我跟你讲，雾廊晚上有歌声，千万别去。”','<span class="me">你</span>：（她的眼睛很亮，像在说一件很刺激的事。）'],[
-    {t:'我想去看看', f:()=>{flag('curious');rel('ayou','doubt',1);clue('ayou_song');flag('ayou_done');afterAyou();}},
-    {t:'你陪我去吗', f:()=>{rel('ayou','trust',1);clue('ayou_song');flag('ayou_done');afterAyou();}},
-    {t:'你桌上那个铃铛是什么', f:()=>{clue('bell_hint');rel('ayou','debt',1);flag('ayou_done');afterAyou();}}
-  ]);
+  const result = a.run();
+  showFeedback(result.title, result.text, result.changes,
+    S.ap <= 0 ? '结束这一天' : '继续',
+    () => { S.ap <= 0 ? nightSettle() : renderHub(); });
 }
-function afterAyou(){
-  render('阿柚',['阿柚：“总之，晚上别乱跑。院长最近脾气不好。”','<span class="dim">她说完又低头摆弄那个铃铛，像在藏什么。</span>'],[{t:'回到礼堂',f:()=>goto('hall')}]);
+
+function showMarketChoice() {
+  main.innerHTML = `<h2>外岛市集 · 交易</h2>
+    <p><span class="npc">市集商人</span>：“退潮才开门。你带了什么来换？”</p>
+    <p class="dim">他面前摆着旧回声、旧名字、旧承诺。</p>
+    <div class="warnbox">不可逆：交易一旦完成，代价会留在你身上。</div>`;
+  btns.innerHTML = '';
+  const opts = [
+    { t: '用一段记忆换线索', f: () => {
+      sil(3); addClue('market_echo'); council(1);
+      showFeedback('市集交易', ['你走出市集时，忘了自己刚才想说什么。手里多了一小段回声。'],
+        [{ t: '静默值', v: '+3', type: 'down' }, { t: '获得线索：市集回声', v: '', type: 'info' }, { t: '议会介入', v: '+1', type: 'down' }],
+        S.ap <= 0 ? '结束这一天' : '继续',
+        () => { S.ap <= 0 ? nightSettle() : renderHub(); });
+    }},
+    { t: '用承诺换', f: () => {
+      S.flags.market_promise = true; addClue('market_echo'); rel('ayou', -1);
+      showFeedback('市集交易', ['商人：“毕业前，帮我带一个人来。”', '<span class="dim">你点了头，才想起没问是谁。</span>'],
+        [{ t: '获得线索：市集回声', v: '', type: 'info' }, { t: '阿柚怀疑', v: '-1', type: 'down' }],
+        S.ap <= 0 ? '结束这一天' : '继续',
+        () => { S.ap <= 0 ? nightSettle() : renderHub(); });
+    }},
+    { t: '不换', f: () => {
+      showFeedback('市集交易', ['商人耸耸肩：“那就等你改主意。”'], [],
+        S.ap <= 0 ? '结束这一天' : '继续',
+        () => { S.ap <= 0 ? nightSettle() : renderHub(); });
+    }},
+  ];
+  opts.forEach(o => {
+    const b = document.createElement('button');
+    b.textContent = o.t;
+    b.onclick = o.f;
+    btns.appendChild(b);
+  });
 }
-function resonator(){
-  if(S.flags.resonator){render('共鸣器',['你已经领了共鸣器：<b>'+S.flags.resonator+'</b>。它还没响过。'],[{t:'回到礼堂',f:()=>goto('hall')}]);return;}
-  render('共鸣器',['桌上摆着三只共鸣器：音叉、骨笛、石铃。你只能选一只。'],[
-    {t:'音叉（听感+）',f:()=>{flag('resonator','音叉');flag('attr_listen');render('共鸣器',['你拿起音叉。它很轻，像在等一个声音。'],[{t:'回到礼堂',f:()=>goto('hall')}]);}},
-    {t:'骨笛（共情+）',f:()=>{flag('resonator','骨笛');flag('attr_empathy');render('共鸣器',['你拿起骨笛。院长也有一只，但她从不吹。'],[{t:'回到礼堂',f:()=>goto('hall')}]);}},
-    {t:'石铃（缄默+）',f:()=>{flag('resonator','石铃');flag('attr_silence');render('共鸣器',['你拿起石铃。铃舌是空的，暂时不会响。'],[{t:'回到礼堂',f:()=>goto('hall')}]);}}
-  ]);
+
+function nightSettle() {
+  const events = [];
+
+  if (S.day === 1 && !S.acted.ayou) {
+    events.push('你听见宿舍里阿柚在摆弄铃铛，声音很轻。她好像在等谁问一句，但没有人问。');
+    rel('ayou', -1);
+  }
+  if (S.day === 2 && !S.flags.fog_night_done) {
+    events.push('第二天早上，你听说昨晚院长在雾廊抓到一个人。没人说是谁。');
+    S.flags.qiyie_caught = true; rel('qiyie', -2); council(1);
+  }
+  if (S.day === 3) {
+    events.push('议会的人出现在学园门口。岑澜站在门内，没有开门。');
+    council(1);
+  }
+  if (S.day === 4 && S.clues.length < 5) {
+    events.push('你听见岑澜在走廊里问黎伯：“那个新生，查到了什么？”');
+    rel('libo', -1);
+  }
+  if (S.day === 5) {
+    events.push('雾廊的歌声停了。静默井的裂痕在夜里发光。');
+  }
+
+  if (events.length === 0) {
+    events.push('夜色很静。你躺在床上，听见雾从窗缝里渗进来。');
+  }
+
+  main.innerHTML = `<h2>第 ${S.day} 天 · 夜晚</h2>` +
+    events.map(e => `<p>${e}</p>`).join('') +
+    (S.missed.length ? `<div class="warnbox">你错过了：${S.missed.join(' ')}</div>` : '');
+  btns.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'primary';
+
+  if (S.day >= 5) {
+    b.textContent = '走向静默井';
+    b.onclick = finale;
+  } else {
+    b.textContent = `进入第 ${S.day + 1} 天`;
+    b.onclick = () => {
+      S.day++;
+      S.ap = 2;
+      S.missed = [];
+      renderHub();
+    };
+  }
+  btns.appendChild(b);
 }
-function notice(){
-  if(S.flags.notice){render('旧告示',['旧告示：潮汐夜，勿留雾廊。落款日期是二十年前。'],[{t:'回到礼堂',f:()=>goto('hall')}]);return;}
-  render('旧告示',['墙上贴着一张发黄的告示，字迹被雾浸过，只能看清一半。','“潮汐夜，勿留雾廊……”落款日期是二十年前。'],[
-    {t:'记下来',f:()=>{flag('notice');clue('old_notice');render('旧告示',['你把告示抄进线索簿。'],[{t:'回到礼堂',f:()=>goto('hall')}]);}},
-    {t:'先不管',f:()=>goto('hall')}
-  ]);
+
+function finale() {
+  if (S.clues.length < 4) {
+    main.innerHTML = `<h2>静默井入口</h2>
+      <p>井口低鸣。你觉得自己知道得还不够。</p>
+      <p class="dim">至少再找几条线索，才能面对井下的东西。</p>`;
+    btns.innerHTML = '';
+    const b = document.createElement('button');
+    b.textContent = '硬着头皮下去';
+    b.onclick = finalChoice;
+    btns.appendChild(b);
+    return;
+  }
+  main.innerHTML = `<h2>终章 · 静默井</h2>
+    <p>静默井的裂痕在夜里发光。栖夜站在井边，手里攥着那页失踪的回声。</p>
+    <p><span class="npc">栖夜</span>：“你们不该跟来。”</p>
+    <p><span class="me">你</span>：（现在要说什么？）</p>`;
+  btns.innerHTML = '';
+  [
+    { t: '出示线索', f: () => {
+      main.innerHTML += `<p>你把线索一条条摆出来。井边的雾随着每句话变薄。</p>
+        <p><span class="npc">栖夜</span>：“……你查得比我想的深。”</p>`;
+      finalChoice();
+    }},
+    { t: '问栖夜为什么藏', f: () => {
+      rel('qiyie', 1);
+      main.innerHTML += `<p>栖夜：“因为议会拿到它，学园就不再是学园了。”</p>`;
+      finalChoice();
+    }},
+    { t: '看其他人的反应', f: () => {
+      main.innerHTML += `<p>阿柚站在你身后，闻玦站在门口。没有人先开口。</p>`;
+      finalChoice();
+    }},
+  ].forEach(o => {
+    const b = document.createElement('button');
+    b.textContent = o.t;
+    b.onclick = o.f;
+    btns.appendChild(b);
+  });
 }
-function dormTalk(){
-  flag('dorm_done');
-  render('宿舍夜谈',['<span class="npc">阿柚</span>：“熄灯了还醒着？来聊会儿。”','<span class="dim">她把零食推过来。</span>'],[
-    {t:'聊八卦',f:()=>{flag('dorm_gossip');clue('rumor_qiyie');rel('ayou','trust',1);render('宿舍夜谈',['阿柚压低声音：“有人说栖夜半夜在雾廊等人。你说，他是不是在谈恋爱？”','<span class="dim">她说完自己先笑了，但笑得很轻。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'聊家里',f:()=>{flag('dorm_family');rel('ayou','trust',1);render('宿舍夜谈',['阿柚：“我家在回声市集，开旧物铺的。别跟别人说啊。”','<span class="dim">她说完把铃铛转得很快。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'聊害怕的事',f:()=>{flag('dorm_fear');rel('ayou','trust',2);clue('ayou_fear');render('宿舍夜谈',['阿柚沉默了一会儿：“我怕被看出来。市集出身的人，在这里总像借来的。”','<span class="dim">你第一次见她这么安静。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'聊暗恋',f:()=>{flag('dorm_crush');rel('ayou','debt',1);flag('crush_ayou');render('宿舍夜谈',['阿柚：“你有没有觉得……闻玦那种人，越冷越让人想逗他？”','<span class="dim">她说完立刻补一句：“我随便说说的。”</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
+
+function finalChoice() {
+  main.innerHTML += `<div class="warnbox">不可逆：这是最后的选择。</div>`;
+  btns.innerHTML = '';
+  [
+    { t: '公开真相', k: 'truth_public' },
+    { t: '帮栖夜隐瞒', k: 'truth_hide' },
+    { t: '联合三人修复回声', k: 'truth_repair' },
+    { t: '和市集交易', k: 'truth_trade' },
+  ].forEach(o => {
+    const b = document.createElement('button');
+    b.textContent = o.t;
+    b.onclick = () => { S.flags[o.k] = true; ending(); };
+    btns.appendChild(b);
+  });
 }
-function starBell(){
-  render('流星铃',['<span class="npc">阿柚</span>：“别碰那个铃。它……有点怪。”','<span class="me">你</span>：（铃身有一道旧裂纹，里面像压着声音。）'],[
-    {t:'我帮你修',f:()=>{flag('repair_started');rel('ayou','trust',1);repairPuzzle();}},
-    {t:'它哪来的？',f:()=>{flag('bell_origin');rel('ayou','doubt',1);clue('bell_hint');render('流星铃',['阿柚：“市集捡的。别问了。”','<span class="dim">她把铃往身后藏了藏。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'先不动它',f:()=>{flag('bell_done');render('流星铃',['你放下铃铛。它没有响。'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
-}
-function repairPuzzle(){
-  render('旧物修复：流星铃',['铃舌卡住了。选正确的零件组合。'],[
-    {t:'细铜丝 + 旧铃舌',f:()=>{flag('bell_done');flag('bell_repaired');clue('bell_echo');render('流星铃',['铃修好了。它没有响，但你知道里面多了一小段不属于市集的声音。','<span class="npc">阿柚</span>：“……你听到了？”'],[
-      {t:'交还给她',f:()=>{rel('ayou','trust',2);flag('bell_returned');render('流星铃',['阿柚把铃收进怀里，很久没说话。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-      {t:'先留着',f:()=>{rel('ayou','doubt',1);flag('bell_kept');render('流星铃',['阿柚看着你，没伸手。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-      {t:'交给院长',f:()=>{rel('ayou','doubt',3);flag('bell_reported');council(1);render('流星铃',['阿柚退后一步：“你拿去啊。”'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-    ]);}},
-    {t:'市集胶 + 碎玻璃',f:()=>{flag('bell_done');flag('bell_broken');rel('ayou','doubt',1);render('流星铃',['铃裂得更厉害了。阿柚没说话。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'回响石片 + 铜丝',f:()=>{flag('bell_done');flag('bell_broken');rel('ayou','doubt',1);sil(1);render('流星铃',['铃响了一声，然后哑了。阿柚把铃抢了回去。'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
-}
-function anonNote(){
-  flag('crush_done');
-  render('匿名纸条',['你在桌上发现一张折得很小的纸条。字迹很急，只写了一句：“今晚雾廊，别一个人去。”','<span class="dim">没有署名。</span>'],[
-    {t:'回一张纸条：你是谁？',f:()=>{flag('note_replied');rel('ayou','awkward',1);render('匿名纸条',['第二天，桌上多了回信：“你猜。”','<span class="dim">字迹和昨天不一样，也许是故意的。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'先收起来',f:()=>{flag('note_kept');render('匿名纸条',['你把纸条收进口袋。它很轻，但让你一整天都不太专心。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'拿去问阿柚',f:()=>{rel('ayou','doubt',1);flag('note_asked');render('匿名纸条',['阿柚：“不是我写的。”她回答得很快，快得有点不自然。','<span class="dim">你不知道该不该信。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
-}
-function liboTalk(){
-  flag('libo_talked');
-  render('黎伯',['黎伯在纸上写：“有些声音，听一次就够了。”','<span class="dim">他指了指自己的喉咙，又指了指地下。</span>'],[
-    {t:'记下这条线索',f:()=>{clue('libo_voice');render('黎伯',['你把这句话抄进线索簿。'],[{t:'回教室',f:()=>goto('classroom')}]);}},
-    {t:'先回教室',f:()=>goto('classroom')}
-  ]);
-}
-function liboHelp(){
-  render('黎伯的旧物',['旧物堆里有一段很旧的录音。声音像黎伯，但更年轻。','<span class="echo">录音：“井下面有东西在回应我。我不该叫它的名字。”</span>'],[
-    {t:'当面问他',f:()=>{rel('libo','trust',1);flag('libo_confronted');render('黎伯',['黎伯在纸上写：“有些声音，是我自己弄丢的。不是别人拿走的。”','<span class="dim">他把纸折好，推给你。</span>'],[{t:'记下线索',f:()=>{clue('libo_voice');clue('old_recording');flag('libo_resolved');flag('libo_witness');goto('classroom');}}]);}},
-    {t:'告诉岑澜',f:()=>{council(1);flag('libo_resolved');rel('cenlan','trust',1);render('黎伯',['岑澜听完，只说了一句：“我知道了。”'],[{t:'回教室',f:()=>goto('classroom')}]);}},
-    {t:'自己留着',f:()=>{flag('libo_resolved');clue('libo_voice');clue('old_recording');render('黎伯',['你把录音收进口袋。黎伯没有察觉。'],[{t:'回教室',f:()=>goto('classroom')}]);}}
-  ]);
-}
-function puzzleClass(){
-  render('倾听拼图：课堂异响',['黎伯停下笔。哪一段才是教室里真正的声音来源？'],[
-    {t:'粉笔划过石板的声音',f:()=>wrongListen()},
-    {t:'窗外雾海的风声',f:()=>wrongListen()},
-    {t:'墙内极轻的歌声，像被什么压住',f:()=>{clue('classroom_song');flag('classroom_done');flag('heard_classroom_song');render('倾听拼图',['你听见了。墙里有歌声，被什么压着。','<span class="echo">它好像在说：“第七段……”</span>'],[{t:'回教室',f:()=>goto('classroom')}]);}},
-    {t:'后排同学翻书的声音',f:()=>wrongListen()}
-  ]);
-}
-function wrongListen(){sil(1);render('倾听拼图',['你听错了。耳边只剩杂音。静默值上升了。'],[{t:'再试一次',f:puzzleClass},{t:'先回去',f:()=>goto('classroom')}]);}
-function wenjue(){
-  if(S.flags.wenjue_done){render('闻玦',['<span class="npc">闻玦</span>：“目录的事，你别再查了。”'],[{t:'回教室',f:()=>goto('classroom')}]);return;}
-  render('闻玦',['<span class="npc">闻玦</span>：“你翻过目录了。”','<span class="me">你</span>：（缺页记录被改过。）'],[
-    {t:'直接问他',f:()=>{rel('wenjue','doubt',1);wenjueAfter();}},
-    {t:'先说我查到的',f:()=>{rel('wenjue','trust',1);flag('wenjue_shared');wenjueAfter();}},
-    {t:'提他哥哥',f:()=>{rel('wenjue','doubt',2);flag('wenjue_brother');wenjueAfter();}}
-  ]);
-}
-function wenjueAfter(){
-  if(S.rel.wenjue.trust>=1||S.flags.wenjue_shared){
-    render('闻玦',['闻玦沉默很久：“我哥留下半段回声。里面只有一句话。”','<span class="dim">他把一张旧纸推到你面前。</span>'],[
-      {t:'我们一起查',f:()=>{rel('wenjue','trust',2);flag('wenjue_ally');flag('wenjue_done');clue('wenjue_echo');clue('catalog');render('闻玦',['闻玦：“不是被盗，是被藏。”'],[{t:'回教室',f:()=>goto('classroom')}]);}},
-      {t:'你为什么不自己查？',f:()=>{flag('wenjue_done');clue('wenjue_echo');rel('wenjue','debt',1);render('闻玦',['闻玦：“因为我不确定，查下去会查到谁。”'],[{t:'回教室',f:()=>goto('classroom')}]);}}
-    ]);
-  }else{flag('wenjue_done');render('闻玦',['闻玦合上目录：“我没什么好说的。”'],[{t:'回教室',f:()=>goto('classroom')}]);}
-}
-function catalogCheck(){flag('catalog_done');clue('catalog');sil(1);render('图书馆目录',['你翻开目录。缺页记录被改过，改得很小心，但还是留下了痕。','<span class="dim">旁边有一行铅笔小字：“问闻玦。”</span>'],[{t:'回图书馆',f:()=>goto('library')}]);}
-function libraryCorner(){
-  flag('lib_crush');
-  render('图书馆角落',['你在角落坐下。过了一会儿，闻玦把一叠整理好的笔记放在你桌上，没说话。','<span class="dim">笔记是新的，还有墨迹。他大概是刚抄完。</span>'],[
-    {t:'叫住他道谢',f:()=>{rel('wenjue','trust',1);rel('wenjue','awkward',1);render('图书馆角落',['闻玦停了一下：“顺手。”'],[{t:'回图书馆',f:()=>goto('library')}]);}},
-    {t:'什么都不说',f:()=>{rel('wenjue','debt',1);render('图书馆角落',['闻玦走远了。笔记还留着。'],[{t:'回图书馆',f:()=>goto('library')}]);}}
-  ]);
-}
-function fogNight(){
-  flag('fog_night_done');
-  render('雾廊夜遇',['<span class="dim">歌声里有一句模糊的话：“第七段……别交给议会。”</span>','雾里走出一个人。是栖夜。','<span class="npc">栖夜</span>：“你不该来这里。”'],[
-    {t:'你听见了吗？',f:()=>{rel('qiyie','trust',1);clue('qiyie_hint');clue('fog_song');flag('heard_fog_song');fogTalk();}},
-    {t:'我要告诉院长',f:()=>{rel('qiyie','doubt',2);flag('reported');clue('fog_song');flag('heard_fog_song');council(1);fogTalk();}},
-    {t:'你在这里做什么？',f:()=>{rel('qiyie','doubt',1);clue('fog_song');flag('heard_fog_song');fogTalk();}}
-  ]);
-}
-function fogTalk(){
-  render('栖夜',['<span class="npc">栖夜</span>：“第七段回声不是被盗，是被藏。藏它的人，不想让议会拿到。”','<span class="me">你</span>：（他看着我，像在等我做一个决定。）'],[
-    {t:'我帮你保密',f:()=>{rel('qiyie','trust',1);flag('qiyie_ally');render('栖夜',['栖夜看了你很久，点了点头。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'我需要想想',f:()=>{render('栖夜',['栖夜：“想清楚再来。”他转身走进雾里。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'我要上报',f:()=>{rel('qiyie','doubt',2);flag('reported');council(1);render('栖夜',['栖夜没有拦你。他只是站在原地，看着你走。'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
-}
-function tornNotice(){
-  flag('notice_done');
-  render('旧告示',['半张告示贴在雾廊尽头。缺失的字慢慢显出来。','<span class="me">你</span>：（日期是二十年前。潮汐夜，禁入静默井。）'],[
-    {t:'上报院长',f:()=>{rel('cenlan','trust',1);flag('council');council(1);clue('notice_full');render('旧告示',['岑澜看完，只说：“我知道了。”'],[{t:'回雾廊',f:()=>goto('fog')}]);}},
-    {t:'先找栖夜',f:()=>{rel('qiyie','trust',1);flag('qiyie_ally');clue('notice_full');render('旧告示',['栖夜看完，低声说：“你比我想的会查。”'],[{t:'回雾廊',f:()=>goto('fog')}]);}},
-    {t:'自己留着',f:()=>{clue('notice_full');render('旧告示',['你把告示折好，收进口袋。'],[{t:'回雾廊',f:()=>goto('fog')}]);}}
-  ]);
-}
-function fogRumor(){
-  flag('rumor_done');
-  render('墙角的八卦',['两个高年级学生躲在雾廊拐角说话。你假装路过。','<span class="dim">“听说岑澜和黎伯年轻时是一对？”</span>','<span class="dim">“别瞎说，是因为那件事才闹翻的。”</span>'],[
-    {t:'凑近听',f:()=>{clue('rumor_cenlan');flag('rumor_heard');render('墙角的八卦',['“那件事”到底是什么，没人往下说。','<span class="dim">他们看见你，立刻散了。</span>'],[{t:'回雾廊',f:()=>goto('fog')}]);}},
-    {t:'直接问他们',f:()=>{rel('cenlan','doubt',1);flag('rumor_asked');render('墙角的八卦',['“没什么没什么。”他们跑得很快。','<span class="dim">看来这里的传闻不太欢迎被追问。</span>'],[{t:'回雾廊',f:()=>goto('fog')}]);}},
-    {t:'走开',f:()=>{flag('rumor_ignored');goto('fog');}}
-  ]);
-}
-function sneak(){
-  flag('sneak_done');sil(2);rel('cenlan','doubt',1);
-  render('静默术潜行',['你按住自己的回响，慢慢往雾廊深处走。脚步声消失了，但脑子开始发空。','<span class="dim">你在墙上发现了一道很浅的划痕，像是有人在这里等过谁。</span>'],[
-    {t:'记下划痕',f:()=>{clue('notice_full');render('静默术潜行',['你把划痕抄进线索簿。静默值又高了一点。'],[{t:'回雾廊',f:()=>goto('fog')}]);}},
-    {t:'赶紧退回去',f:()=>goto('fog')}
-  ]);
-}
-function tideView(){
-  flag('tide_done');
-  render('雾海观潮',['雾海退下去，桥边的风带着咸味。有人和你一起坐下。'],[
-    {t:'聊梦想',f:()=>{rel('ayou','trust',1);render('雾海观潮',['阿柚：“我想开一家比我家更大的旧物铺。到时候你来，我给你打折。”'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'聊家里',f:()=>{rel('qiyie','trust',1);flag('qiyie_soft');clue('qiyie_soft');render('雾海观潮',['栖夜：“我没有家。学园收留我的时候，黎伯说，守井人不需要家。”','<span class="dim">他顿了顿：“但有时候，我会觉得桥边比井边暖和。”</span>'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'问对方怕不怕毕业',f:()=>{rel('wenjue','trust',1);render('雾海观潮',['闻玦：“怕。毕业意味着要回议会，回那个不许提我哥的地方。”'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'什么都不说',f:()=>{flag('tide_silent');render('雾海观潮',['你们坐了很久，谁也没说话。风把雾吹开又合上。'],[{t:'回桥',f:()=>goto('bridge')}]);}}
-  ]);
-}
-function race(){
-  flag('race_done');
-  render('回声桥赛跑',['有人提议赛跑。桥很窄，风很大，但没人想先认输。'],[
-    {t:'全力跑',f:()=>{flag('race_won');rel('ayou','trust',1);render('回声桥赛跑',['你赢了。阿柚喘着气笑：“你跑得比看起来快。”'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'留着力气',f:()=>{flag('race_slow');rel('qiyie','trust',1);render('回声桥赛跑',['你落在后面。跑到一半，栖夜伸手拉了你一把。','<span class="dim">他什么都没说。</span>'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'中途停下',f:()=>{flag('race_stopped');rel('wenjue','doubt',1);render('回声桥赛跑',['你停下来。闻玦回头看了一眼，继续跑。'],[{t:'回桥',f:()=>goto('bridge')}]);}}
-  ]);
-}
-function bonfire(){
-  flag('bonfire_done');council(1);
-  render('雾海篝火夜',['全班围在火边。有人唱歌，有人讲鬼故事，火光把每个人的脸照得很近。','<span class="dim">有人提到“第七段”，又很快停住。</span>'],[
-    {t:'唱歌',f:()=>{flag('bonfire_sing');rel('ayou','trust',1);render('雾海篝火夜',['你跑调了。阿柚笑得最大声，但最后也跟着唱。'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'讲鬼故事',f:()=>{flag('bonfire_scare');rel('qiyie','doubt',1);render('雾海篝火夜',['你讲了一个关于静默井的故事。火光暗了一瞬，没人说话。','<span class="dim">栖夜看着火，很久没有动。</span>'],[{t:'回礼堂',f:()=>goto('hall')}]);}},
-    {t:'安静坐着',f:()=>{flag('bonfire_silent');rel('wenjue','trust',1);render('雾海篝火夜',['你没说话。闻玦也没说。火光照着你们两个人的影子。'],[{t:'回礼堂',f:()=>goto('hall')}]);}}
-  ]);
-}
-function market(){
-  if(S.night===2&&!S.flags.tide_low){render('市集门',['门关着。退潮已经过了。'],[{t:'回桥',f:()=>goto('bridge')}]);return;}
-  render('市集商人',['<span class="npc">市集商人</span>：“退潮才开门。你带了什么来换？”','<span class="dim">他面前摆着旧回声、旧名字、旧承诺。</span>'],[
-    {t:'用一段记忆换线索',f:()=>{flag('market_done');flag('market_memory');sil(2);clue('market_echo');render('市集商人',['你走出市集时，忘了自己刚才想说什么。手里多了一小段回声。'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'用承诺换',f:()=>{flag('market_done');flag('market_promise');rel('ayou','debt',1);clue('market_echo');render('市集商人',['商人：“毕业前，帮我带一个人来。”','<span class="dim">你点了头，才想起没问是谁。</span>'],[{t:'回桥',f:()=>goto('bridge')}]);}},
-    {t:'不换',f:()=>{flag('market_done');flag('market_refused');render('市集商人',['商人耸耸肩：“那就等你改主意。”'],[{t:'回桥',f:()=>goto('bridge')}]);}}
-  ]);
-}
-function finale(){
-  if(S.clues.length<3){render('静默井入口',['井口低鸣。你觉得自己知道得还不够。','<span class="dim">至少再找几条线索，才能面对井下的东西。</span>'],[{t:'回雾廊',f:()=>goto('fog')}]);return;}
-  if(S.flags.finale_done){ending();return;}
-  render('终章',['静默井的裂痕在夜里发光。栖夜站在井边，手里攥着那页失踪的回声。','<span class="npc">栖夜</span>：“你们不该跟来。”','<span class="me">你</span>：（现在要说什么？）'],[
-    {t:'出示线索',f:()=>{render('终章',['你把线索一条条摆出来。井边的雾随着每句话变薄。','<span class="npc">栖夜</span>：“……你查得比我想的深。”'],[{t:'进入最后的选择',f:finalChoice}]);}},
-    {t:'问栖夜为什么藏',f:()=>{rel('qiyie','trust',1);render('终章',['栖夜：“因为议会拿到它，学园就不再是学园了。”'],[{t:'进入最后的选择',f:finalChoice}]);}},
-    {t:'看其他人的反应',f:()=>{render('终章',['阿柚站在你身后，闻玦站在门口。没有人先开口。'],[{t:'进入最后的选择',f:finalChoice}]);}}
-  ]);
-}
-function finalChoice(){
-  render('终章',['裂痕在扩大。你必须决定第七回声的命运。','<span class="me">你</span>：（最后的选择。）'],[
-    {t:'公开真相',f:()=>{flag('truth_public');flag('finale_done');ending();}},
-    {t:'帮栖夜隐瞒',f:()=>{flag('truth_hide');flag('finale_done');ending();}},
-    {t:'联合三人修复回声',f:()=>{flag('truth_repair');flag('finale_done');ending();}},
-    {t:'和市集交易',f:()=>{flag('truth_trade');flag('finale_done');ending();}}
-  ]);
-}
-function ending(){
-  const c=S.clues.length,tA=S.rel.ayou.trust,tW=S.rel.wenjue.trust,tQ=S.rel.qiyie.trust;
-  let id='wrong_accusation';
-  if(c<5||S.memoryLost){id=(S.flags.truth_repair&&S.memoryLost)?'memory':'wrong_accusation';}
-  else if(S.flags.truth_repair){
-    if(S.silence>=8&&S.memoryLost)id='memory';
-    else if(tA>=1&&tW>=1&&tQ>=1&&c>=8&&S.council<=2)id='repair';
-    else if(S.council>=3)id='council';
-    else id='memory';
-  }else if(S.flags.truth_public){id=S.council>=4?'council':(tW>=1&&S.council>=2?'tower':'council');}
-  else if(S.flags.truth_hide){id=(tQ>=1&&S.council<=2)?'silent':'alone';}
-  else if(S.flags.truth_trade){id='market';}
-  S.ending=id;
-  const E={
-    repair:['共鸣修复','三人的回响叠在一起。阿柚的铃、闻玦的半段回声、栖夜手里的第七段，在井口织成一道很薄的光。裂痕没有消失，但它不再扩大。\n岑澜第一次在学生面前吹响骨笛。黎伯站在最后面，纸上写了一行字：“这次，我没有躲。”\n第七回声没有消失，它变成了学园新的守夜声。'],
-    council:['公开真相 · 议会接管','你把证据交到议会手里。第二天，学园门口多了两座尖塔。\n岑澜交出钥匙，没有争辩。阿柚站在人群里，没有看你。\n真相公开了。但学园不再只属于学生。'],
-    tower:['议会尖塔','闻玦把证据交上去。议会给了你一个位置，也给了学园一道锁。\n你走进尖塔那天，闻玦没有来送你。\n你告诉自己，这是最稳妥的选择。'],
-    silent:['沉默守井','栖夜把第七回声放回井里。裂痕没有扩大，但也没有愈合。\n你们约定，毕业前谁也不提。阿柚照常聊八卦，闻玦照常核对目录。\n只有你知道，井下面还有一段声音在等。'],
-    market:['市集流亡','退潮那晚，你和阿柚带着流星铃离开学园。市集收留了你们，也收走了回声。\n阿柚说：“至少这里没人问我们是谁。”\n你没告诉她，你偶尔还会听见井里的歌声。'],
-    alone:['守井人栖夜','栖夜独自走进井里。裂痕合上了，但他没有再出来。\n黎伯在井边坐了一整夜。岑澜没有吹骨笛。\n阿柚问你：“他还会回来吗？”\n你说：“我不知道。”'],
-    wrong_accusation:['错误指认','你掌握的东西还不够。指认在争论中变成了互相怀疑，裂痕扩大，学园被迫封校。\n议会接管那天，雾廊的歌声停了。\n没有人知道第七回声去了哪里。'],
-    memory:['记忆代价','裂痕合上了。你修好了回声，却想不起是谁在井边拉住你的手。\n阿柚来看你，你觉得她眼熟，但叫不出名字。\n她说：“没关系，我记得就行。”']
+
+function ending() {
+  const c = S.clues.length, a = S.rel.ayou, q = S.rel.qiyie, w = S.rel.wenjue;
+  let id = 'wrong';
+
+  const lifeEchoes =
+    (S.acted.ayou >= 2 ? 1 : 0) +
+    (S.acted.bridge >= 1 ? 1 : 0) +
+    (S.acted.bridge >= 2 ? 1 : 0) +
+    (S.acted.library >= 2 ? 1 : 0) +
+    (S.acted.classroom >= 3 ? 1 : 0);
+
+  const canSeven = lifeEchoes >= 3 && a >= 0 && q >= 0 && w >= 0 && c >= 5;
+
+  if (c < 4 || S.flags.memory_lost) {
+    id = S.flags.truth_repair ? 'memory' : 'wrong';
+  } else if (S.flags.truth_repair) {
+    if (S.silence >= 8) id = 'memory';
+    else if (canSeven && S.council <= 2) id = 'seven';
+    else if (a >= 1 && q >= 1 && w >= 1 && c >= 7 && S.council <= 2) id = 'repair';
+    else if (S.council >= 3) id = 'council';
+    else id = 'memory';
+  } else if (S.flags.truth_public) {
+    id = S.council >= 4 ? 'council' : (w >= 1 && S.council >= 2 ? 'tower' : 'council');
+  } else if (S.flags.truth_hide) {
+    id = (q >= 1 && S.council <= 2) ? 'silent' : 'alone';
+  } else if (S.flags.truth_trade) {
+    id = 'market';
+  }
+
+  const E = {
+    seven: ['七音重聚',
+      '你站在井边，没有交出任何东西。\n你想起宿舍里阿柚转铃铛的声音，想起桥边的风，想起赛跑时她笑得最大声，想起闻玦把笔记推过来时说的那句“顺手”。\n第七回声自己补全了。它缺的那一段，不是秘密，是活人的声音。\n裂痕慢慢合上。岑澜没有吹骨笛。黎伯没有写字。阿柚还在转铃铛。\n学园不是靠秘密守住的，是靠人声撑住的。'],
+    repair: ['共鸣修复',
+      '三人的回响叠在一起。阿柚的铃、闻玦的半段回声、栖夜手里的第七段，在井口织成一道很薄的光。裂痕没有消失，但它不再扩大。\n岑澜第一次在学生面前吹响骨笛。黎伯站在最后面，纸上写了一行字：“这次，我没有躲。”\n第七回声没有消失，它变成了学园新的守夜声。'],
+    council: ['公开真相 · 议会接管',
+      '你把证据交到议会手里。第二天，学园门口多了两座尖塔。\n岑澜交出钥匙，没有争辩。阿柚站在人群里，没有看你。\n真相公开了。但学园不再只属于学生。'],
+    tower: ['议会尖塔',
+      '闻玦把证据交上去。议会给了你一个位置，也给了学园一道锁。\n你走进尖塔那天，闻玦没有来送你。\n你告诉自己，这是最稳妥的选择。'],
+    silent: ['沉默守井',
+      '栖夜把第七回声放回井里。裂痕没有扩大，但也没有愈合。\n你们约定，毕业前谁也不提。阿柚照常聊八卦，闻玦照常核对目录。\n只有你知道，井下面还有一段声音在等。'],
+    market: ['市集流亡',
+      '退潮那晚，你和阿柚带着流星铃离开学园。市集收留了你们，也收走了回声。\n阿柚说：“至少这里没人问我们是谁。”\n你没告诉她，你偶尔还会听见井里的歌声。'],
+    alone: ['守井人栖夜',
+      '栖夜独自走进井里。裂痕合上了，但他没有再出来。\n黎伯在井边坐了一整夜。岑澜没有吹骨笛。\n阿柚问你：“他还会回来吗？”\n你说：“我不知道。”'],
+    wrong: ['错误指认',
+      '你掌握的东西还不够。指认在争论中变成了互相怀疑，裂痕扩大，学园被迫封校。\n议会接管那天，雾廊的歌声停了。\n没有人知道第七回声去了哪里。'],
+    memory: ['记忆代价',
+      '裂痕合上了。你修好了回声，却想不起是谁在井边拉住你的手。\n阿柚来看你，你觉得她眼熟，但叫不出名字。\n她说：“没关系，我记得就行。”'],
   };
-  const e=E[id];
-  render(e[0],e[1].split('\n').map(p=>'<p>'+p+'</p>').join('')+
-    '<p class="dim">线索 '+c+' 条 · 静默值 '+S.silence+' · 议会介入 '+S.council+
-    ' · 阿柚 信'+S.rel.ayou.trust+'/疑'+S.rel.ayou.doubt+
-    ' · 栖夜 信'+S.rel.qiyie.trust+
-    ' · 闻玦 信'+S.rel.wenjue.trust+'</p>',
-    [{t:'重新开始',f:()=>location.reload()}]);
+
+  const e = E[id];
+  main.innerHTML = `<h2>${e[0]}</h2>` +
+    e[1].split('\n').map(p => `<p>${p}</p>`).join('') +
+    `<p class="dim">线索 ${c} 条 · 静默值 ${S.silence} · 议会介入 ${S.council} · 生活回响 ${lifeEchoes}/5 · 阿柚 ${a} / 栖夜 ${q} / 闻玦 ${w}</p>`;
+  btns.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'primary';
+  b.textContent = '重新开始';
+  b.onclick = () => location.reload();
+  btns.appendChild(b);
 }
-function toggleBook(){
-  const b=$('book');
-  if(b.classList.contains('show')){b.classList.remove('show');return;}
-  b.innerHTML='<h2>线索簿</h2><h3>世界观摘要</h3>'+
-    WORLD.map(t=>'<div class="item">'+t+'</div>').join('')+
-    '<h3>已获线索</h3>'+(S.clues.length?S.clues.map(id=>'<div class="item">'+(CLUES[id]||id)+'</div>').join(''):'<div class="item" style="color:#5a6a80">暂时没有线索。</div>')+
-    '<h3>关系</h3>'+Object.keys(S.rel).map(k=>{const r=S.rel[k];return '<div class="item">'+k+'：信任'+r.trust+' / 怀疑'+r.doubt+' / 亏欠'+r.debt+' / 尴尬'+r.awkward+'</div>';}).join('')+
-    '<div class="close">关闭（Tab）</div>';
-  b.classList.add('show');
-  b.querySelector('.close').onclick=()=>b.classList.remove('show');
+
+function showBook() {
+  const list = S.clues.length ? S.clues.map(id => `<div class="change"><span>${id}</span></div>`).join('') : '<div class="dim">暂时没有线索。</div>';
+  main.innerHTML = `<h2>线索簿</h2>${list}
+    <div class="changes" style="margin-top:14px">
+      ${Object.keys(S.rel).map(k => {
+        const v = S.rel[k];
+        const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'info';
+        return `<div class="change"><span>${k}</span><span class="${cls}">${v > 0 ? '+' : ''}${v}</span></div>`;
+      }).join('')}
+    </div>`;
+  btns.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'primary';
+  b.textContent = '返回';
+  b.onclick = renderHub;
+  btns.appendChild(b);
 }
-document.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();toggleBook();}});
-const PRO=[
-  '澜界没有大陆，只有漂浮在雾海上的岛屿。岛与岛之间，回声桥只在潮汐时显现。',
-  '万物都会留下回响——声音、记忆、情绪的残片。魔法师不念咒，他们倾听回响、引导回响、留下回响。',
-  '三条铁律：不能伪造回响；施法必留痕迹；改变回响，必付代价。代价可以是体力、声音、记忆，甚至一段关系。',
-  '缄默议会管理所有拾音人。守井人看守静默井，封印雾海深处的旧回响。',
-  '澜序学园建在最大的浮岛上。地下有七口静默井，第七口，封着一段不该被唤醒的回声。',
-  '二十年前，井边出过一次事故。一名拾音人失踪，一名守井人失声。报告被封存，学园照常上课。',
-  '今年开学前，井裂了。第七段回声失踪，雾廊夜里传来不属于任何人的歌声。议会盯着学园，等着接管的理由。',
-  '而你，今天入学。你领到一只共鸣器，它还没响过。你还没决定：要听多少，说多少，瞒多少。'
-];
-let pi=0;
-function showPro(){const o=$('overlay');o.classList.add('show');$('ovTxt').textContent=PRO[pi];}
-$('overlay').onclick=e=>{if(e.target.id==='ovSkip')return;pi++;if(pi>=PRO.length){$('overlay').classList.remove('show');startGame();}else showPro();};
-$('ovSkip').onclick=e=>{e.stopPropagation();$('overlay').classList.remove('show');startGame();};
-function startGame(){
-  S.started=true;
-  updatePhase();
-  $('cc').textContent=S.clues.length;
-  $('sv').textContent=S.silence;
-  $('cv').textContent=S.council;
-  goto('hall');
-}
-showPro();
+
+updateHUD();
+renderHub();
 </script>
 </body>
 </html>
